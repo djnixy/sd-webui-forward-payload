@@ -167,7 +167,7 @@ def on_ui_settings():
         "forward_payload_base_url",
         shared.OptionInfo(
             "",
-            "Target Base URL (e.g., http://127.0.0.1:7860)",
+            "Target Base URL (e.g., http://127.0.0.1:7860). Overridden by SD_FORWARD_PAYLOAD_URL env var if set.",
             gr.Textbox,
             {"interactive": True},
             section=section,
@@ -208,14 +208,15 @@ class ForwardPayloadScript(scripts.Script):
         base_url = base_url.rstrip("/")
 
         is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
-        endpoint = "/sdapi/v1/img2img" if is_img2img else "/sdapi/v1/txt2img"
+
+        # Only forward if txt2img
+        if is_img2img:
+            return
+
+        endpoint = "/sdapi/v1/txt2img"
         target_url = base_url + endpoint
 
-        api_request = (
-            StableDiffusionImg2ImgProcessingAPI
-            if is_img2img
-            else StableDiffusionTxt2ImgProcessingAPI
-        )
+        api_request = StableDiffusionTxt2ImgProcessingAPI
 
         try:
             payload = api_payload_dict(p, api_request)
