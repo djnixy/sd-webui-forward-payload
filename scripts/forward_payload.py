@@ -83,11 +83,16 @@ def alwayson_script_payload(p: StableDiffusionProcessing) -> Dict:
     all_scripts: Dict[str, List] = {}
     for alwayson_script in script_runner.alwayson_scripts:
         title = alwayson_script.title()
-        all_scripts[
+        name = (
             title.lower()
             if title
             else os.path.basename(alwayson_script.filename).lower()
-        ] = {"args": p.script_args[alwayson_script.args_from : alwayson_script.args_to]}
+        )
+        if name == "forward payload":
+            continue
+        all_scripts[name] = {
+            "args": p.script_args[alwayson_script.args_from : alwayson_script.args_to]
+        }
     return {"alwayson_scripts": all_scripts}
 
 def seed_enable_extras_payload(p: StableDiffusionProcessing) -> Dict:
@@ -108,7 +113,6 @@ def api_payload_dict(
         "firstphase_height",
         "sampler_index",
         "send_images",
-        "save_images",
     ]
     result = {}
     result.update(selectable_script_payload(p))
@@ -158,6 +162,16 @@ def on_ui_settings():
         shared.OptionInfo(
             False,
             "Enable Forward Payload",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_save_on_remote",
+        shared.OptionInfo(
+            False,
+            "Save generated images on remote server",
             gr.Checkbox,
             {"interactive": True},
             section=section,
@@ -221,6 +235,12 @@ class ForwardPayloadScript(scripts.Script):
         try:
             payload = api_payload_dict(p, api_request)
             payload["seed"] = -1
+            payload["save_images"] = shared.opts.data.get(
+                "forward_payload_save_on_remote", False
+            )
+
+            with open("example.json", "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4)
 
             threading.Thread(
                 target=send_payload, args=(target_url, payload), daemon=True
