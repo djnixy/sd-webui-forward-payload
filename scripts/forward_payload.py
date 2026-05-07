@@ -168,6 +168,26 @@ def on_ui_settings():
         ),
     )
     shared.opts.add_option(
+        "forward_payload_model_name",
+        shared.OptionInfo(
+            "",
+            "Override Model Name on Remote (leave empty to use same model)",
+            gr.Textbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_extra_prompt",
+        shared.OptionInfo(
+            "",
+            "Extra Positive Prompt",
+            gr.Textbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
         "forward_payload_only_hrfix",
         shared.OptionInfo(
             True,
@@ -256,6 +276,16 @@ class ForwardPayloadScript(scripts.Script):
             payload["save_images"] = shared.opts.data.get(
                 "forward_payload_save_on_remote", True
             )
+
+            model_name = shared.opts.data.get("forward_payload_model_name", "").strip()
+            if model_name:
+                override_settings = payload.get("override_settings", {})
+                override_settings["sd_model_checkpoint"] = model_name
+                payload["override_settings"] = override_settings
+
+            extra_prompt = shared.opts.data.get("forward_payload_extra_prompt", "").strip()
+            if extra_prompt:
+                payload["prompt"] = payload.get("prompt", "") + ", " + extra_prompt
 
             # Save the payload to a file for inspection in the extension's directory
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
