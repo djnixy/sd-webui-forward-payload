@@ -239,7 +239,10 @@ class ForwardPayloadScript(scripts.Script):
                 "forward_payload_save_on_remote", False
             )
 
-            with open("example.json", "w", encoding="utf-8") as f:
+            # Save the payload to a file for inspection in the extension's directory
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            filepath = os.path.join(base_dir, "forwarded_payload.json")
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=4)
 
             threading.Thread(
