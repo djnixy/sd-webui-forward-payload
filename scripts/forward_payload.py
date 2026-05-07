@@ -168,6 +168,16 @@ def on_ui_settings():
         ),
     )
     shared.opts.add_option(
+        "forward_payload_only_hrfix",
+        shared.OptionInfo(
+            True,
+            "Only forward if Hires. fix is enabled",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
         "forward_payload_save_on_remote",
         shared.OptionInfo(
             True,
@@ -201,9 +211,13 @@ class ForwardPayloadScript(scripts.Script):
         return []
 
     def process(self, p: StableDiffusionProcessing, *args):
+        if getattr(p, "_forward_payload_sent", False):
+            return
+        setattr(p, "_forward_payload_sent", True)
+
         # Environment variable takes precedence for enabling and URL
         env_url = os.environ.get("SD_FORWARD_PAYLOAD_URL")
-        enabled = shared.opts.data.get("forward_payload_enabled", False)
+        enabled = shared.opts.data.get("forward_payload_enabled", True)
 
         if env_url:
             enabled = True
@@ -212,6 +226,10 @@ class ForwardPayloadScript(scripts.Script):
             base_url = shared.opts.data.get("forward_payload_base_url", "")
 
         if not enabled or not base_url:
+            return
+
+        only_hrfix = shared.opts.data.get("forward_payload_only_hrfix", True)
+        if only_hrfix and not getattr(p, "enable_hr", False):
             return
 
         # Ensure base_url has a schema

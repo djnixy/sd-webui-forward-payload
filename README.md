@@ -8,6 +8,7 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 - **Seed Modification**: Automatically sets the seed to `-1` in the forwarded payload.
 - **txt2img Only**: Specifically targets `txt2img` requests and ignores `img2img`.
 - **Remote Image Saving**: Option to tell the remote server whether to save the generated images.
+- **Hires. fix Conditional Forwarding**: Option to only forward payloads when Hires. fix is enabled (on by default).
 - **Payload Inspection**: Automatically saves the forwarded JSON payload to `forwarded_payload.json` for easy inspection.
 - **Environment Variable Support**: Configure your target server via `SD_FORWARD_PAYLOAD_URL`.
 - **Cross-Platform**: Compatible with both Stable Diffusion WebUI and Forge (supports Pydantic v1 and v2).
@@ -27,7 +28,7 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 1. Go to the **Settings** tab.
 2. Look for the **Forward Payload** section on the left.
 3. Set the **Target Base URL** (e.g., `http://192.168.1.100:7860`).
-4. (Optional) Configure other settings like **Save generated images on remote server** (enabled by default).
+4. (Optional) Configure other settings like **Save generated images on remote server** or **Only forward if Hires. fix is enabled** (both enabled by default).
 5. Click **Apply settings**.
 
 ### Via Environment Variable
