@@ -168,11 +168,31 @@ def on_ui_settings():
         ),
     )
     shared.opts.add_option(
+        "forward_payload_model_override_enabled",
+        shared.OptionInfo(
+            False,
+            "Enable Model Name Override",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
         "forward_payload_model_name",
         shared.OptionInfo(
             "",
-            "Override Model Name on Remote (leave empty to use same model)",
+            "Override Model Name on Remote",
             gr.Textbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_extra_prompt_enabled",
+        shared.OptionInfo(
+            False,
+            "Enable Extra Positive Prompt",
+            gr.Checkbox,
             {"interactive": True},
             section=section,
         ),
@@ -245,11 +265,24 @@ class ForwardPayloadScript(scripts.Script):
         else:
             base_url = shared.opts.data.get("forward_payload_base_url", "")
 
-        if not enabled or not base_url:
+        if not enabled:
+            print("[ForwardPayload] Skipping: Extension is disabled in settings.")
+            return
+
+        if not base_url:
+            print("[ForwardPayload] Skipping: No target base URL configured.")
             return
 
         only_hrfix = shared.opts.data.get("forward_payload_only_hrfix", True)
         if only_hrfix and not getattr(p, "enable_hr", False):
+            print("[ForwardPayload] Skipping: Hires. fix is not enabled.")
+            return
+
+        is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
+
+        # Only forward if txt2img
+        if is_img2img:
+            print("[ForwardPayload] Skipping: Not a txt2img request.")
             return
 
         # Ensure base_url has a schema
@@ -259,33 +292,32 @@ class ForwardPayloadScript(scripts.Script):
         # Remove trailing slash
         base_url = base_url.rstrip("/")
 
-        is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
-
-        # Only forward if txt2img
-        if is_img2img:
-            return
-
         endpoint = "/sdapi/v1/txt2img"
         target_url = base_url + endpoint
 
         api_request = StableDiffusionTxt2ImgProcessingAPI
 
         try:
+            print(f"[ForwardPayload] Preparing to forward payload to {target_url}...")
             payload = api_payload_dict(p, api_request)
             payload["seed"] = -1
             payload["save_images"] = shared.opts.data.get(
                 "forward_payload_save_on_remote", True
             )
 
-            model_name = shared.opts.data.get("forward_payload_model_name", "").strip()
-            if model_name:
-                override_settings = payload.get("override_settings", {})
-                override_settings["sd_model_checkpoint"] = model_name
-                payload["override_settings"] = override_settings
+            model_override_enabled = shared.opts.data.get("forward_payload_model_override_enabled", False)
+            if model_override_enabled:
+                model_name = shared.opts.data.get("forward_payload_model_name", "").strip()
+                if model_name:
+                    override_settings = payload.get("override_settings", {})
+                    override_settings["sd_model_checkpoint"] = model_name
+                    payload["override_settings"] = override_settings
 
-            extra_prompt = shared.opts.data.get("forward_payload_extra_prompt", "").strip()
-            if extra_prompt:
-                payload["prompt"] = payload.get("prompt", "") + ", " + extra_prompt
+            extra_prompt_enabled = shared.opts.data.get("forward_payload_extra_prompt_enabled", False)
+            if extra_prompt_enabled:
+                extra_prompt = shared.opts.data.get("forward_payload_extra_prompt", "").strip()
+                if extra_prompt:
+                    payload["prompt"] = payload.get("prompt", "") + ", " + extra_prompt
 
             # Save the payload to a file for inspection in the extension's directory
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -7,8 +7,8 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 - **Asynchronous Forwarding**: Uses background threads so your local generation isn't delayed.
 - **Seed Modification**: Automatically sets the seed to `-1` in the forwarded payload.
 - **txt2img Only**: Specifically targets `txt2img` requests and ignores `img2img`.
-- **Model Override**: Option to specify a different model name to be used on the remote server.
-- **Extra Prompts**: Append additional positive prompts specifically for the remote generation.
+- **Model Override**: Toggleable option to specify a different model name to be used on the remote server.
+- **Extra Prompts**: Toggleable option to append additional positive prompts specifically for the remote generation.
 - **Remote Image Saving**: Option to tell the remote server whether to save the generated images.
 - **Hires. fix Conditional Forwarding**: Option to only forward payloads when Hires. fix is enabled (on by default).
 - **Payload Inspection**: Automatically saves the forwarded JSON payload to `forwarded_payload.json` for easy inspection.
@@ -30,7 +30,7 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 1. Go to the **Settings** tab.
 2. Look for the **Forward Payload** section on the left.
 3. Set the **Target Base URL** (e.g., `http://192.168.1.100:7860`).
-4. (Optional) Configure other settings like **Override Model Name on Remote**, **Extra Positive Prompt**, **Save generated images on remote server**, or **Only forward if Hires. fix is enabled**.
+4. (Optional) Configure other settings like **Enable Model Name Override**, **Enable Extra Positive Prompt**, **Save generated images on remote server**, or **Only forward if Hires. fix is enabled**.
 5. Click **Apply settings**.
 
 ### Via Environment Variable
