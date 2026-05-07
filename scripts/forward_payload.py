@@ -145,13 +145,13 @@ def api_payload_dict(
 
 def send_payload(url: str, payload: Dict):
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            print(f"[ForwardPayload] Successfully forwarded payload to {url}")
-        else:
-            print(
-                f"[ForwardPayload] Failed to forward payload to {url}. Status code: {response.status_code}"
-            )
+        # Send payload and don't wait for completion (Fire and Forget)
+        # 5s connect timeout, 1s read timeout
+        requests.post(url, json=payload, timeout=(5, 1))
+        print(f"[ForwardPayload] Payload dispatched to {url}")
+    except requests.exceptions.ReadTimeout:
+        # Expected in fire and forget mode
+        print(f"[ForwardPayload] Payload dispatched to {url}")
     except Exception as e:
         print(f"[ForwardPayload] Error forwarding payload to {url}: {e}")
 
