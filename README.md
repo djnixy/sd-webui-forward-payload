@@ -26,8 +26,8 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 ### Via UI
 1. Go to the **Settings** tab.
 2. Look for the **Forward Payload** section on the left.
-3. Enable the extension and set the **Target Base URL** (e.g., `http://192.168.1.100:7860`).
-4. (Optional) Enable **Save generated images on remote server**.
+3. Set the **Target Base URL** (e.g., `http://192.168.1.100:7860`).
+4. (Optional) Configure other settings like **Save generated images on remote server** (enabled by default).
 5. Click **Apply settings**.
 
 ### Via Environment Variable

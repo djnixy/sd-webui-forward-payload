@@ -160,7 +160,7 @@ def on_ui_settings():
     shared.opts.add_option(
         "forward_payload_enabled",
         shared.OptionInfo(
-            False,
+            True,
             "Enable Forward Payload",
             gr.Checkbox,
             {"interactive": True},
@@ -170,7 +170,7 @@ def on_ui_settings():
     shared.opts.add_option(
         "forward_payload_save_on_remote",
         shared.OptionInfo(
-            False,
+            True,
             "Save generated images on remote server",
             gr.Checkbox,
             {"interactive": True},
@@ -236,7 +236,7 @@ class ForwardPayloadScript(scripts.Script):
             payload = api_payload_dict(p, api_request)
             payload["seed"] = -1
             payload["save_images"] = shared.opts.data.get(
-                "forward_payload_save_on_remote", False
+                "forward_payload_save_on_remote", True
             )
 
             # Save the payload to a file for inspection in the extension's directory
