@@ -143,6 +143,48 @@ def api_payload_dict(
         result[name] = value
     return make_json_compatible(result)
 
+# # Fields that exist in Forge's API model but are not part of standard SD WebUI API.
+# # Sending these to a standard WebUI causes a 422 Unprocessable Entity error.
+# FORGE_ONLY_FIELDS = {
+#     "distilled_cfg_scale",
+#     "hr_cfg",
+#     "hr_distilled_cfg",
+#     "hr_additional_modules",
+# }
+
+# Alwayson script names that are built into Forge but don't exist on a standard SD WebUI.
+# These must be removed so the remote server doesn't reject the payload.
+FORGE_INTEGRATED_SCRIPTS = {
+    "dynamicthresholding (cfg-fix) integrated",
+    "freeu integrated (sd 1.x, sd 2.x, sdxl)",
+    "kohya hrfix integrated",
+    "latentmodifier integrated",
+    "multidiffusion integrated",
+    "never oom integrated",
+    "perturbedattentionguidance integrated",
+    "selfattentionguidance integrated (sd 1.x, sd 2.x, sdxl)",
+    "stylealign integrated",
+    # Forge UI scripts that embed themselves as alwayson scripts
+    "api payload",
+    "forge couple",
+    "sampler",
+    "seed",
+    "refiner",
+}
+
+def sanitize_payload_for_remote(payload: Dict) -> Dict:
+    """Remove Forge-integrated scripts before forwarding to ensure compatibility."""
+    sanitized = payload.copy()
+
+    if "alwayson_scripts" in sanitized:
+        sanitized["alwayson_scripts"] = {
+            name: args
+            for name, args in sanitized["alwayson_scripts"].items()
+            if name.lower() not in FORGE_INTEGRATED_SCRIPTS
+        }
+
+    return sanitized
+
 def send_payload(url: str, payload: Dict):
     try:
         print(f"[ForwardPayload] Dispatching payload to {url}...")
@@ -152,6 +194,10 @@ def send_payload(url: str, payload: Dict):
             print(f"[ForwardPayload] Successfully forwarded payload to {url}")
         else:
             print(f"[ForwardPayload] Failed to forward payload to {url}. Status code: {response.status_code}")
+            try:
+                print(f"[ForwardPayload] Response body: {response.text[:1000]}")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[ForwardPayload] Error forwarding payload to {url}: {e}")
 
@@ -275,7 +321,7 @@ class ForwardPayloadScript(scripts.Script):
 
         only_hrfix = shared.opts.data.get("forward_payload_only_hrfix", True)
         if only_hrfix and not getattr(p, "enable_hr", False):
-            print("[ForwardPayload] Skipping: Hires. fix is not enabled.")
+            print("[ForwardPayload] Hires. fix is not enabled, skipping forward.")
             return
 
         is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
@@ -319,14 +365,18 @@ class ForwardPayloadScript(scripts.Script):
                 if extra_prompt:
                     payload["prompt"] = payload.get("prompt", "") + ", " + extra_prompt
 
-            # Save the payload to a file for inspection in the extension's directory
+            # Strip Forge-specific fields and integrated scripts that don't exist on
+            # a standard SD WebUI — these cause a 422 Unprocessable Entity response.
+            forwarded_payload = sanitize_payload_for_remote(payload)
+
+            # Save the sanitized payload to a file for inspection
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             filepath = os.path.join(base_dir, "forwarded_payload.json")
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=4)
+                json.dump(forwarded_payload, f, indent=4)
 
             threading.Thread(
-                target=send_payload, args=(target_url, payload), daemon=True
+                target=send_payload, args=(target_url, forwarded_payload), daemon=True
             ).start()
 
         except Exception as e:

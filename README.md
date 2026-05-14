@@ -14,6 +14,7 @@ An extension that automatically forwards your `txt2img` generation payloads to a
 - **Payload Inspection**: Automatically saves the forwarded JSON payload to `forwarded_payload.json` for easy inspection.
 - **Environment Variable Support**: Configure your target server via `SD_FORWARD_PAYLOAD_URL`.
 - **Cross-Platform**: Compatible with both Stable Diffusion WebUI and Forge (supports Pydantic v1 and v2).
+- **Forge Payload Sanitization**: Automatically strips Forge-specific API fields (`distilled_cfg_scale`, `hr_cfg`, `hr_distilled_cfg`, `hr_additional_modules`) and Forge-integrated scripts from the payload before forwarding, ensuring compatibility with standard SD WebUI targets that would otherwise return a `422 Unprocessable Entity` error.
 
 ## Installation
 
@@ -42,6 +43,6 @@ export SD_FORWARD_PAYLOAD_URL=http://192.168.1.100:7860
 
 ## How it Works
 
-When you start a `txt2img` generation, the extension captures all the current parameters. It converts them into a JSON structure identical to the standard WebUI API. It then modifies the `seed` to `-1`, adds the `save_images` parameter based on your settings, and sends a POST request to `[Target URL]/sdapi/v1/txt2img` in a background thread.
+When you start a `txt2img` generation, the extension captures all the current parameters. It converts them into a JSON structure identical to the standard WebUI API. It then modifies the `seed` to `-1`, adds the `save_images` parameter based on your settings, and strips any Forge-specific fields and Forge-integrated scripts that would cause a `422` error on a standard SD WebUI target. The sanitized payload is then sent via POST to `[Target URL]/sdapi/v1/txt2img` in a background thread.
 
-The extension also saves a copy of the final JSON payload to a file named `forwarded_payload.json` in the extension's root directory every time you generate, which is useful for debugging or replicating requests manually.
+The extension also saves a copy of the final forwarded JSON payload to a file named `forwarded_payload.json` in the extension's root directory every time you generate, which is useful for debugging or replicating requests manually.
