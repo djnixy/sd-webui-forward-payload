@@ -83,11 +83,16 @@ def alwayson_script_payload(p: StableDiffusionProcessing) -> Dict:
     all_scripts: Dict[str, List] = {}
     for alwayson_script in script_runner.alwayson_scripts:
         title = alwayson_script.title()
-        all_scripts[
+        name = (
             title.lower()
             if title
             else os.path.basename(alwayson_script.filename).lower()
-        ] = {"args": p.script_args[alwayson_script.args_from : alwayson_script.args_to]}
+        )
+        if name == "forward payload":
+            continue
+        all_scripts[name] = {
+            "args": p.script_args[alwayson_script.args_from : alwayson_script.args_to]
+        }
     return {"alwayson_scripts": all_scripts}
 
 def seed_enable_extras_payload(p: StableDiffusionProcessing) -> Dict:
@@ -108,7 +113,6 @@ def api_payload_dict(
         "firstphase_height",
         "sampler_index",
         "send_images",
-        "save_images",
     ]
     result = {}
     result.update(selectable_script_payload(p))
@@ -139,15 +143,61 @@ def api_payload_dict(
         result[name] = value
     return make_json_compatible(result)
 
+# # Fields that exist in Forge's API model but are not part of standard SD WebUI API.
+# # Sending these to a standard WebUI causes a 422 Unprocessable Entity error.
+# FORGE_ONLY_FIELDS = {
+#     "distilled_cfg_scale",
+#     "hr_cfg",
+#     "hr_distilled_cfg",
+#     "hr_additional_modules",
+# }
+
+# Alwayson script names that are built into Forge but don't exist on a standard SD WebUI.
+# These must be removed so the remote server doesn't reject the payload.
+FORGE_INTEGRATED_SCRIPTS = {
+    "dynamicthresholding (cfg-fix) integrated",
+    "freeu integrated (sd 1.x, sd 2.x, sdxl)",
+    "kohya hrfix integrated",
+    "latentmodifier integrated",
+    "multidiffusion integrated",
+    "never oom integrated",
+    "perturbedattentionguidance integrated",
+    "selfattentionguidance integrated (sd 1.x, sd 2.x, sdxl)",
+    "stylealign integrated",
+    # Forge UI scripts that embed themselves as alwayson scripts
+    "api payload",
+    "forge couple",
+    "sampler",
+    "seed",
+    "refiner",
+}
+
+def sanitize_payload_for_remote(payload: Dict) -> Dict:
+    """Remove Forge-integrated scripts before forwarding to ensure compatibility."""
+    sanitized = payload.copy()
+
+    if "alwayson_scripts" in sanitized:
+        sanitized["alwayson_scripts"] = {
+            name: args
+            for name, args in sanitized["alwayson_scripts"].items()
+            if name.lower() not in FORGE_INTEGRATED_SCRIPTS
+        }
+
+    return sanitized
+
 def send_payload(url: str, payload: Dict):
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        print(f"[ForwardPayload] Dispatching payload to {url}...")
+        # 5s connect timeout, 600s read timeout to ensure remote receives
+        response = requests.post(url, json=payload, timeout=(5, 600))
         if response.status_code == 200:
             print(f"[ForwardPayload] Successfully forwarded payload to {url}")
         else:
-            print(
-                f"[ForwardPayload] Failed to forward payload to {url}. Status code: {response.status_code}"
-            )
+            print(f"[ForwardPayload] Failed to forward payload to {url}. Status code: {response.status_code}")
+            try:
+                print(f"[ForwardPayload] Response body: {response.text[:1000]}")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[ForwardPayload] Error forwarding payload to {url}: {e}")
 
@@ -156,8 +206,68 @@ def on_ui_settings():
     shared.opts.add_option(
         "forward_payload_enabled",
         shared.OptionInfo(
-            False,
+            True,
             "Enable Forward Payload",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_model_override_enabled",
+        shared.OptionInfo(
+            False,
+            "Enable Model Name Override",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_model_name",
+        shared.OptionInfo(
+            "",
+            "Override Model Name on Remote",
+            gr.Textbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_extra_prompt_enabled",
+        shared.OptionInfo(
+            False,
+            "Enable Extra Positive Prompt",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_extra_prompt",
+        shared.OptionInfo(
+            "",
+            "Extra Positive Prompt",
+            gr.Textbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_only_hrfix",
+        shared.OptionInfo(
+            True,
+            "Only forward if Hires. fix is enabled",
+            gr.Checkbox,
+            {"interactive": True},
+            section=section,
+        ),
+    )
+    shared.opts.add_option(
+        "forward_payload_save_on_remote",
+        shared.OptionInfo(
+            True,
+            "Save generated images on remote server",
             gr.Checkbox,
             {"interactive": True},
             section=section,
@@ -187,9 +297,13 @@ class ForwardPayloadScript(scripts.Script):
         return []
 
     def process(self, p: StableDiffusionProcessing, *args):
+        if getattr(p, "_forward_payload_sent", False):
+            return
+        setattr(p, "_forward_payload_sent", True)
+
         # Environment variable takes precedence for enabling and URL
         env_url = os.environ.get("SD_FORWARD_PAYLOAD_URL")
-        enabled = shared.opts.data.get("forward_payload_enabled", False)
+        enabled = shared.opts.data.get("forward_payload_enabled", True)
 
         if env_url:
             enabled = True
@@ -197,7 +311,24 @@ class ForwardPayloadScript(scripts.Script):
         else:
             base_url = shared.opts.data.get("forward_payload_base_url", "")
 
-        if not enabled or not base_url:
+        if not enabled:
+            print("[ForwardPayload] Skipping: Extension is disabled in settings.")
+            return
+
+        if not base_url:
+            print("[ForwardPayload] Skipping: No target base URL configured.")
+            return
+
+        only_hrfix = shared.opts.data.get("forward_payload_only_hrfix", True)
+        if only_hrfix and not getattr(p, "enable_hr", False):
+            print("[ForwardPayload] Hires. fix is not enabled, skipping forward.")
+            return
+
+        is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
+
+        # Only forward if txt2img
+        if is_img2img:
+            print("[ForwardPayload] Skipping: Not a txt2img request.")
             return
 
         # Ensure base_url has a schema
@@ -207,23 +338,45 @@ class ForwardPayloadScript(scripts.Script):
         # Remove trailing slash
         base_url = base_url.rstrip("/")
 
-        is_img2img = isinstance(p, StableDiffusionProcessingImg2Img)
-
-        # Only forward if txt2img
-        if is_img2img:
-            return
-
         endpoint = "/sdapi/v1/txt2img"
         target_url = base_url + endpoint
 
         api_request = StableDiffusionTxt2ImgProcessingAPI
 
         try:
+            print(f"[ForwardPayload] Preparing to forward payload to {target_url}...")
             payload = api_payload_dict(p, api_request)
             payload["seed"] = -1
+            payload["save_images"] = shared.opts.data.get(
+                "forward_payload_save_on_remote", True
+            )
+
+            model_override_enabled = shared.opts.data.get("forward_payload_model_override_enabled", False)
+            if model_override_enabled:
+                model_name = shared.opts.data.get("forward_payload_model_name", "").strip()
+                if model_name:
+                    override_settings = payload.get("override_settings", {})
+                    override_settings["sd_model_checkpoint"] = model_name
+                    payload["override_settings"] = override_settings
+
+            extra_prompt_enabled = shared.opts.data.get("forward_payload_extra_prompt_enabled", False)
+            if extra_prompt_enabled:
+                extra_prompt = shared.opts.data.get("forward_payload_extra_prompt", "").strip()
+                if extra_prompt:
+                    payload["prompt"] = payload.get("prompt", "") + ", " + extra_prompt
+
+            # Strip Forge-specific fields and integrated scripts that don't exist on
+            # a standard SD WebUI — these cause a 422 Unprocessable Entity response.
+            forwarded_payload = sanitize_payload_for_remote(payload)
+
+            # Save the sanitized payload to a file for inspection
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            filepath = os.path.join(base_dir, "forwarded_payload.json")
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(forwarded_payload, f, indent=4)
 
             threading.Thread(
-                target=send_payload, args=(target_url, payload), daemon=True
+                target=send_payload, args=(target_url, forwarded_payload), daemon=True
             ).start()
 
         except Exception as e:
